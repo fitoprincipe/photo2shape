@@ -25,6 +25,8 @@ DriverExt = {'ESRI Shapefile':'.shp', 'KML':'.kml', 'GeoJSON':'.geojson'}
 errList = []
 
 class Window(QtGui.QMainWindow):
+	""" La ayuda de este soft va acá
+	"""
 	
     # ---- FUNCION DE INCIO --------------------------------------------
     def __init__(self):
