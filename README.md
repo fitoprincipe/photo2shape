@@ -1,3 +1,4 @@
+[![Waffle.io - Columns and their card count](https://badge.waffle.io/fitoprincipe/photo2shape.png?columns=all)](https://waffle.io/fitoprincipe/photo2shape?utm_source=badge)
 # photo2shape
 
 <b>ENGLISH<br></b>
