@@ -2,9 +2,8 @@
 # -*- coding: UTF-8 -*-
 
 """
-en esta version intento hacer un solo shapefile con todas las fotos
-el formato KML lo dejo como esta, pero habria que darle una vuelta de rosca
-para que quede bien
+Simple software to create a vector file (shapefile, KML, geoJSON, etc)
+from a collection of geotagged pictures
 """
 
 import sys
@@ -23,92 +22,96 @@ except:
 
 from PyQt4 import QtGui, QtCore
 
-__version__ = '0.0.1'
+__version__ = '0.0.2'
 
-# diccionarios
-longitudes = {}
-theDict = {}
-DriverExt = {'ESRI Shapefile': '.shp', 'KML': '.kml', 'GeoJSON': '.geojson'}
-errList = []
+DRIVER_EXTENSIONS = {'ESRI Shapefile': 'shp',
+                     'KML': 'kml',
+                     'GeoJSON': 'geojson'}
+ERRORS = []
 
+def erase_list():
+    del ERRORS[:]
+
+def check_gps_data(img):
+
+    image = open(img, 'rb')
+    the_tags = exifread.process_file(image)
+
+    hasgps = 'GPS GPSLongitude' in the_tags.keys()
+
+    return True if hasgps else False
 
 class Window(QtGui.QMainWindow):
-    """ La ayuda de este soft va acá
-	"""
+    """ Main Windows """
 
-    # ---- FUNCION DE INCIO --------------------------------------------
-    def __init__(self):
-        # hereda los métodos de los 'padres' de QMainWindow
-        super(Window, self).__init__()
+    def __init__(self, **kwargs):
+        # inherit from QMainWindow
+        super(Window, self).__init__(**kwargs)
 
-        # fija parametros del Main Window
-        self.setWindowTitle("PHOTO2SHAPE / XYLENIA FORESTAL (www.xylenia.com)")
+        # set parameters for Main Window
+        self.setWindowTitle(
+            "photo2shape - github.com/fitoprincipe/photo2shape")
         # self.setGeometry(50,50,500,300)
         self.setFixedSize(500, 300)
 
-        # fija el estilo de la ventana
-        QtGui.QApplication.setStyle(QtGui.QStyleFactory.create("Plastique"))
+        # set windows style
+        QtGui.QApplication.setStyle(
+            QtGui.QStyleFactory.create("Plastique"))
 
-        # crea la barra del menu
-        el_menu = self.menuBar()
+        # create menu bar
+        menubar = self.menuBar()
 
-        # agrega a la barra del menu el item "Archivo"
-        menu_salir = el_menu.addMenu("Archivo")
+        # Add 'File' to menubar
+        filemenu = menubar.addMenu("File")
 
-        # crea el submenu "Salir" para el nuevo menu y le asigna una funcion
-        salir = QtGui.QAction("&Salir", self)
-        salir.setShortcut("Ctrl+Q")
-        salir.triggered.connect(self.funcionSalir)
-        salir.setStatusTip("Salir")
+        # Open Action & shortcut
+        open = QtGui.QAction("&Open", self)
+        open.setShortcut("Ctrl+O")
+        open.triggered.connect(self.open_filepicker)
+        open.setStatusTip("Open")
+        filemenu.addAction(open)
 
-        # crea el submenu "Abrir" para abrir un archivo
-        abrir = QtGui.QAction("&Abrir", self)
-        abrir.setShortcut("Ctrl+A")
-        abrir.triggered.connect(self.funcionAbrir)
-        abrir.setStatusTip("Abrir")
+        # Exit Action & shortcut
+        exit = QtGui.QAction("&Exit", self)
+        exit.setShortcut("Ctrl+Q")
+        exit.triggered.connect(self.exit_function)
+        exit.setStatusTip("Exit")
+        filemenu.addAction(exit)
 
-        # activa el status bar
+        # StatusBar
         self.theStatusBar = self.statusBar()
 
-        # le agrega al nuevo elemento el submenu "Abrir" con su accion
-        menu_salir.addAction(abrir)
+        # force the application to use QT menu bar and NO OS menubar
+        # useful for Linux users
+        menubar.setNativeMenuBar(False)
 
-        # le agrega al nuevo elemento el submenu "Salir" con su accion
-        menu_salir.addAction(salir)
+        # Add Buttons
+        self.add_buttons()
 
-        # metodo para forzar a la aplicacion a usar la barra del menu segun
-        # Qt (y no la nativa del OS)
-        el_menu.setNativeMenuBar(False)
+    def add_buttons(self):
 
-        # llamo a la funcion "boton" que agrega un boton
-        self.botones()
-
-    # ---- FUNCION PARA AGREGAR BOTONES AL MAIN WINDOW -----------------
-
-    def botones(self):
-
-        # BOTON
-        btn = QtGui.QPushButton("procesar", self)
+        # Process button
+        btn = QtGui.QPushButton("Process", self)
         btn.resize(80, 40)
         btn.move(210, 200)
-        btn.clicked.connect(self.procesar)
+        btn.clicked.connect(self.process)
 
-        # LABELS
-        self.estiloVentana = QtGui.QLabel("Elija un formato", self)
-        self.estiloVentana.move(20, 130)
-        self.estiloVentana.resize(200, 20)
+        # Labels
+        self.window_style = QtGui.QLabel("Choose a format", self)
+        self.window_style.move(20, 130)
+        self.window_style.resize(200, 20)
 
-        self.Arch = QtGui.QLabel("ningun archivo seleccionado", self)
-        self.Arch.move(20, 30)
-        self.Arch.resize(500, 50)
-        self.Arch.setMargin(2)
+        self.file_label = QtGui.QLabel("no file selected", self)
+        self.file_label.move(20, 30)
+        self.file_label.resize(500, 50)
+        self.file_label.setMargin(2)
 
-        self.ArchSave = QtGui.QLabel("Nombre del nuevo archivo:", self)
-        self.ArchSave.move(20, 95)
-        self.ArchSave.resize(200, 25)
-        self.ArchSave.setMargin(2)
+        self.newfile_label = QtGui.QLabel("New filename:", self)
+        self.newfile_label.move(20, 95)
+        self.newfile_label.resize(200, 25)
+        self.newfile_label.setMargin(2)
 
-        # DROPDOWN
+        # Dropdown
         self.comboBox = QtGui.QComboBox(self)
         self.comboBox.addItem('ESRI Shapefile')
         self.comboBox.addItem('KML')
@@ -117,198 +120,172 @@ class Window(QtGui.QMainWindow):
         self.comboBox.resize(135, 25)
 
         # TEXT INPUT
-        self.nombreArch = QtGui.QLineEdit(self)
-        # self.nombrearch.setLineWidth(200)
-        self.nombreArch.move(250, 95)
-        self.nombreArch.resize(200, 25)
+        self.filename_field = QtGui.QLineEdit(self)
+        self.filename_field.move(250, 95)
+        self.filename_field.resize(200, 25)
 
-        # centra el MainWindow
+        # Center Mainwindow
         self.centerOnScreen()
 
-        # muestra los botones
+        # Show buttons
         self.show()
 
-    # ---- FUNCION PARA CENTRAR EL MAINWINDOW --------------------------
     def centerOnScreen(self):
         """centerOnScreen() Centers the window on the screen."""
         resolution = QtGui.QDesktopWidget().screenGeometry()
         self.move((resolution.width() / 2) - (self.frameSize().width() / 2),
                   (resolution.height() / 2) - (self.frameSize().height() / 2))
 
-    # ------- FUNCIONES DE ACCION --------------------------------------
-
     # funcion para abrir el archivo mediante un file picker
     # obtiene una lista -theFilesList- con los archivos seleccionados
-    def funcionAbrir(self):
+    def open_filepicker(self):
+        """ Open files with File Picker
 
-        # Dialog para abrir varios archivos
-        self.theFile = QtGui.QFileDialog.getOpenFileNames(self,
-                                                          "Abrir archivo",
-                                                          os.getcwd(),
+        :return: selected files
+        """
+
+        # Dialog to open files
+        self.file_dialog = QtGui.QFileDialog.getOpenFileNames(self,
+                                                          "Open files",
+                                                          os.getcwd(), # TODO: save last opened folder to a text file
                                                           "Images (*.png "
                                                           "*.jpg)")
 
-        # lista de archivos
+        # files list
         self.theFilesList = []
 
-        # lista de errores
+        # errors list
         self.theErrorList = []
 
-        if self.theFile:
+        if self.file_dialog:
             n = 0
             m = 0
 
-            # para cada foto
-            # agrega cada foto a la lista de fotos
-            # TODO: comprobar los datos GPS, si ninguna tiene, directamente
-            # no crea el archivo
-            for a in self.theFile:
+            # add files to list
+            # TODO: check GPS data, if no file has it, do not create file
+            for file in self.file_dialog:
                 m += 1
-                gps = self.tieneGPS(a)
+                gps = check_gps_data(file)
                 if gps:
-                    # aumento n para contar los archivos
                     n += 1
-                    self.theFilesList.append(a)
+                    self.theFilesList.append(file)
 
-            if m == 0:
-                self.Arch.setText("se procesaran " + str(n) + " archivos")
-            else:
-                self.Arch.setText(
-                    "se procesaran " + str(n) + " archivos\n" + str(
-                        m) + " archivos no tienen datos GPS")
+            msg = "{} of {} files will be processed".format(n, m)
+            self.file_label.setText(msg)
 
-    @staticmethod
-    def tieneGPS(img):
+    def process(self):
+        """ Extract GPS data using file's EXIF
 
-        imagen = open(img, 'rb')
-        losTags = exifread.process_file(imagen)
+        :return:
+        """
 
-        if 'GPS GPSLongitude' in losTags.keys():
-            return True
+        filename = self.filename_field.text()
 
-    # ------- FUNCION PARA EL BOTON ------------------------------------
-    # funcion: procesar el archivo
-    # extrae los datos del GPS del exif
-    # automaticamente ejecuta la funcion -creaShape- con los datos obtenidos
-
-    def procesar(self):
-
-        theText = self.nombreArch.text()
-
-        if theText.size() == 0:
-            # self.Arch.setText("el nombre del archivo debe contener al
-            # menos un caracter")
+        if filename.size() == 0:
             self.theStatusBar.showMessage(
-                "el nombre del archivo debe contener al menos un caracter")
+            "filename must contain one character at least")
             return
         elif len(self.theFilesList) == 0:
-            # self.Arch.setText("no hay archivos para procesar...")
-            self.theStatusBar.showMessage("no hay archivos para procesar...")
+            self.theStatusBar.showMessage("no files to process...")
+            return
         else:
             err = 0
 
-            # obtiene el Driver seleccionado
             theDvrI = self.comboBox.currentIndex()
             theDvr = self.comboBox.itemText(theDvrI)
 
-            # CREO EL SHAPEFILE
+            # SHAPEFILE CREATION
 
-            # obtiene el Driver
+            # get driver
             driver = ogr.GetDriverByName(str(theDvr))
 
-            # obtiene la extension de archivo para ese driver mediante el
-            # diccionario creado al ppio
-            theExt = DriverExt[str(theDvr)]
+            # get extension
+            theExt = DRIVER_EXTENSIONS[str(theDvr)]
 
-            # obtengo el directorio (path) en el que estan las fotos
-            ultimo = str(self.theFilesList[0])
-            dirname = os.path.dirname(ultimo)
+            # get file's path
+            last = str(self.theFilesList[0])
+            dirname = os.path.dirname(last)
             # print dirname
-            # print str(self.theFilesList[0])-ultimo
+            # print str(self.theFilesList[0])-last
 
-            # crea el nuevo FileName (FN)
-            # FN = str(arch)+theExt
-            listaCarpeta = str(self.theFilesList[0]).split("/")
+            # create new FileName (filename)
+            # listaCarpeta = str(self.theFilesList[0]).split("/")
             # print listaCarpeta[len(listaCarpeta)-1]
 
-            # theDirName = os.path.basename(str(self.theFilesList[0]))
-            # FN = str(self.theFilesList[0])+theExt
+            # filename = str(dirname) + "/" + str(filename) + theExt
+            filename = "{}.{}".format(os.path.join(str(dirname), str(filename)),
+                                      theExt)
 
-            print str(dirname)
-            print str(theText)
-            FN = str(dirname) + "/" + str(theText) + theExt
-
-            # crea el DataSource
-            if os.path.exists(FN):
-                errList.append(FN)
+            # create DataSource
+            if os.path.exists(filename):
+                ERRORS.append(filename)
+                self.theStatusBar.showMessage(
+                    'file {} exists already, choose another name\
+                     please'.format(filename))
+                return
             else:
-                theShp = driver.CreateDataSource(FN)
+                theShp = driver.CreateDataSource(filename)
 
-                # crea el SRS
-                # -- TODO-- aca se podria detectar el SRS a partir del exif
+                # create SRS
+                # TODO: detect SRS from EXIF
                 theSR = osr.SpatialReference()
                 theSR.ImportFromEPSG(4326)
 
-                # crea el Layer a partir del DataSource
-                # es un layer de puntos (wkbPoint)
+                # create point Layer (wkbPoint) from DataSource
                 if theShp is None:
-                    # print 'No se puede crear el archivo'
                     sys.exit(1)
-                capa = theShp.CreateLayer(os.path.basename(FN), theSR,
+                layer = theShp.CreateLayer(os.path.basename(filename), theSR,
                                           ogr.wkbPoint)
 
-                # CREACION DE CAMPOS (COLUMNAS)
+                # COLUMNS CREATION
 
-                # crea el campo ID y lo agrega al Layer
+                # Create ID Field and add it to Layer
                 fieldDefn = ogr.FieldDefn("ID", ogr.OFTInteger)
-                capa.CreateField(fieldDefn)
+                layer.CreateField(fieldDefn)
 
-                # crea el campo del path
+                # create path field
                 fldPath = ogr.FieldDefn("Path", ogr.OFTString)
-                capa.CreateField(fldPath)
+                layer.CreateField(fldPath)
 
-                # crea los campos para las coordenadas
+                # create coordinates field
                 fldLat = ogr.FieldDefn("Lat", ogr.OFTReal)
-                capa.CreateField(fldLat)
+                layer.CreateField(fldLat)
 
                 fldLng = ogr.FieldDefn("Lng", ogr.OFTReal)
-                capa.CreateField(fldLng)
+                layer.CreateField(fldLng)
 
-                # TIPO DE LAYER ?? NO SE BIEN COMO FUNCIONA
+                # get Layer type
+                featureDefn = layer.GetLayerDefn()
 
-                # obtiene el tipo de Layer
-                featureDefn = capa.GetLayerDefn()
+            # create one point per file
+            theid = 0
+            for file in self.theFilesList:
+                # augment id
+                theid += 1
 
-            # itera sobre las fotos para crear un punto por foto
+                # open file and process it to add the tags in the combobox
+                image = open(file, 'rb')
+                the_tags = exifread.process_file(image)
 
-            elid = 0
-            for b in self.theFilesList:
-                # aumenta el id
-                elid += 1
+                if 'GPS GPSLongitude' in the_tags.keys():
 
-                # abro la imagen y la proceso para agregar los tags al combobox
-                imagen = open(b, 'rb')
-                losTags = exifread.process_file(imagen)
+                    lon = the_tags['GPS GPSLongitude']
+                    lat = the_tags['GPS GPSLatitude']
+                    lonR = the_tags['GPS GPSLongitudeRef']
+                    latR = the_tags['GPS GPSLatitudeRef']
 
-                if 'GPS GPSLongitude' in losTags.key():
+                    lon_list = (str(lon)).split(",")
+                    lat_list = (str(lat)).split(",")
 
-                    longitud = losTags['GPS GPSLongitude']
-                    latitud = losTags['GPS GPSLatitude']
-                    longR = losTags['GPS GPSLongitudeRef']
-                    latR = losTags['GPS GPSLatitudeRef']
-
-                    listaLong = (str(longitud)).split(",")
-                    listaLat = (str(latitud)).split(",")
-
-                    LongG = listaLong[0].replace("[", "")
-                    LongM = listaLong[1]
-                    LongS = listaLong[2].replace("]", "")
+                    LongG = lon_list[0].replace("[", "")
+                    LongM = lon_list[1]
+                    LongS = lon_list[2].replace("]", "")
                     LongSS = LongS.split("/")
                     LongS1 = (float(LongSS[0])) / (float(LongSS[1]))
 
-                    LatG = listaLat[0].replace("[", "")
-                    LatM = listaLat[1]
-                    LatS = listaLat[2].replace("]", "")
+                    LatG = lat_list[0].replace("[", "")
+                    LatM = lat_list[1]
+                    LatS = lat_list[2].replace("]", "")
                     LatSS = LatS.split("/")
                     LatS1 = (float(LatSS[0])) / (float(LatSS[1]))
 
@@ -319,16 +296,16 @@ class Window(QtGui.QMainWindow):
                         Lat = ((float(LatG)) + ((float(LatM)) / 60) + (
                             (float(LatS1)) / 3600)) * (-1)
 
-                    if longR == "E":
+                    if lonR == "E":
                         Lng = (float(LongG)) + ((float(LongM)) / 60) + (
                             (float(LongS1)) / 3600)
                     else:
                         Lng = ((float(LongG)) + ((float(LongM)) / 60) + (
                             (float(LongS1)) / 3600)) * (-1)
 
-                    # ejecuta la funcion para crear el shape, le pasa (el
-                    # archivo en formato string, Latitud, Longitud, el driver)
-                    crearShape(elid, losTags, b, Lat, Lng, featureDefn, capa)
+                    # create shapefile
+                    self.create_shapefile(theid, the_tags, file, Lat, Lng,
+                                          featureDefn, layer)
 
                 else:
                     # self.theErrorList.append(str(b))
@@ -336,101 +313,71 @@ class Window(QtGui.QMainWindow):
 
             theShp.Destroy()
 
-            if (err > 0) and (len(errList) == 0):
-                self.Arch.setText(str(
-                    err) + " archivos no fueron procesados porque no tienen "
-                           "datos GPS")
-            elif (err == 0) and (len(errList) > 0):
-                self.Arch.setText(str(
-                    len(errList)) + " archivos ya se encontraban procesados")
-            elif (err > 0) and (len(errList) > 0):
-                self.Arch.setText(str(
-                    err) + " archivos no fueron procesados porque no tienen "
-                           "datos GPS\n" + str(
-                    len(errList)) + " archivos ya se encontraban procesados")
+            if (err > 0) and (len(ERRORS) == 0):
+                self.file_label.setText(
+                    "{} files were not processed because didn't have GPS\
+                    data".format(err))
+            elif (err == 0) and (len(ERRORS) > 0):
+                self.file_label.setText(
+                    "{} files were already processed".format(len(ERRORS)))
+            elif (err > 0) and (len(ERRORS) > 0):
+                self.file_label.setText(
+                    "{} files were not processed because didn't have GPS\
+                    data and {} files were already processed".format(err, len(ERRORS)))
             else:
-                self.Arch.setText("proceso completado con exito!")
+                self.file_label.setText("process completed successfully")
 
-            borraLista()
-            print(str(len(errList)))
+            erase_list()
+            print(str(len(ERRORS)))
 
-    # --- FUNCION PARA SALIR DEL PROGRAMA ------------------------------
+    def exit_function(self):
+        """ Exit function
 
-    def funcionSalir(self):
-        # creo las opciones
-        opcion = QtGui.QMessageBox.question(self,
-                                            "Saliendo del programa",
-                                            "realmente quiere salir del "
-                                            "programa?",
+        :return:
+        """
+        # Options
+        options = QtGui.QMessageBox.question(self,
+                                            "Quiting...",
+                                            "do you really want to exit?",
                                             QtGui.QMessageBox.Yes |
                                             QtGui.QMessageBox.No)
 
-        # condicional que indica que hacer si elige si o no
-        if opcion == QtGui.QMessageBox.Yes:
-            # P = prueba()
-            # P.imprime("saliendo")
+        if options == QtGui.QMessageBox.Yes:
             sys.exit()
         else:
             pass
 
-    # ---------- FUNCION PARA BORRAR LISTAS --------------------------------
-    @staticmethod
-    def borraLista():
-        del errList[:]
+    def create_shapefile(self, theid, tags, file, lat, lng, featureDefn, layer):
 
-    # --------- FUNCION QUE MUESTRA UN MENSAJE -----------------------------
-    @staticmethod
-    def mensaje():
-        print("el archivo ya fue procesado")
-
-    # -------- FUNCION PARA CREAR LOS SHAPES -------------------------------
-    # recibe (los tags, el archivo, latitud, longitud, el driver)
-
-    def crearShape(elid, tags, arch, lat, lng, featureDefn, capa):
-
-        # --TODO-- ACA PUEDO ELEGIR SI VOY A CREAR UN ARCH POR FOTO O UNO
-        # PARA TODAS LAS FOTOS
-
-        # crea un feature a partir de la definicion de la capa
+        # Create Feature
         feature = ogr.Feature(featureDefn)
 
-        # escribe sobre los campos
-        feature.SetField("ID", elid)
-        feature.SetField("Path", str(arch))
-        # print(lat)
-        # print(lng)
+        # TODO: catch USEFUL data from tags and pass them to shapefile table
+
+        # Set fields
+        feature.SetField("ID", theid)
+        feature.SetField("Path", str(file))
         feature.SetField("Lat", float(lat))
         feature.SetField("Lng", float(lng))
-        # print(feature.GetFieldAsString(2))
-        # print(feature.GetFieldAsString(3))
 
-        # crea un punto
-        pto = ogr.Geometry(ogr.wkbPoint)
-        pto.AddPoint(lng, lat)
+        # create the point
+        point = ogr.Geometry(ogr.wkbPoint)
+        point.AddPoint(lng, lat)
 
-        # agrega al pto
-        feature.SetGeometry(pto)
+        # add point
+        feature.SetGeometry(point)
 
-        # agrega los nuevos features a la capa
-        capa.CreateFeature(feature)
+        # add new feature to layer
+        layer.CreateFeature(feature)
 
-        # DESTRUYE!
-        pto.Destroy()
+        # Destroy
+        point.Destroy()
         feature.Destroy()
 
-        # theShp.Destroy()
-
-        # llama a la funcion que hace correr el programa
-
-        # ---------- FUNCION PARA CORRER PROGRAMA
-        # ------------------------------
-
-
-def correrPrograma():
+def run():
     app = QtGui.QApplication(sys.argv)
     GUI = Window()
     sys.exit(app.exec_())
 
-
 if __name__ == "__main__":
-    correrPrograma()
+    run()
